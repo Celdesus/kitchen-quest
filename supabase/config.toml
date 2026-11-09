@@ -1,0 +1,15 @@
+# Supabase CLI project config (only the parts Kitchen Quest needs; everything else uses CLI defaults).
+project_id = "kitchen-quest"
+
+[api]
+schemas = ["public"]
+
+[auth]
+site_url = "https://kitchen-quest.pages.dev"
+enable_signup = false            # nobody can self-register; Ivan adds manager logins, staff log in by PIN
+
+[auth.email]
+enable_confirmations = false
+
+[functions.pin-login]
+verify_jwt = false               # the tablet has no session yet; the function checks the tablet code + PIN itself

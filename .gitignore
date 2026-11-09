@@ -1,0 +1,17 @@
+node_modules/
+.pgdata/
+logs/
+backups/
+build/
+mockups/
+scripts/debug-ui.mjs
+
+# generated at deploy time by scripts/write-config.mjs
+public/config.js
+
+# Supabase CLI working files
+supabase/.temp/
+supabase/.branches/
+
+# Example demo logins — do not commit
+TEST-LOGINS.md

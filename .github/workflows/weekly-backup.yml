@@ -1,0 +1,56 @@
+# Weekly encrypted pg_dump of the Supabase database, kept as a GitHub Actions artifact (no card, no extra service).
+# Runs Sunday 18:00 UTC = Monday 02:00 AWST, after the Monday 00:00 AWST crown run. Use a PRIVATE repository.
+# Repository secrets (Settings > Secrets and variables > Actions): DATABASE_URL, BACKUP_PASSPHRASE
+# Download: Actions > weekly-backup > a run > Artifacts. Keep the passphrase somewhere safe (e.g. a password manager).
+# Not triggered on push. A scheduled run exits successfully without dumping when those secrets are unset.
+name: weekly-backup
+on:
+  schedule: [{ cron: '0 18 * * 0' }]
+  workflow_dispatch: {}
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check backup secrets
+        id: secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=""
+          [ -n "$DATABASE_URL" ] || missing="$missing DATABASE_URL"
+          [ -n "$BACKUP_PASSPHRASE" ] || missing="$missing BACKUP_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+              echo "Scheduled backup skipped: missing GitHub secrets:$missing"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Missing GitHub secrets:$missing"
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - name: Install pg_dump 17
+        if: steps.secrets.outputs.skip != 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update && sudo apt-get install -y postgresql-client-17
+      - name: Dump and encrypt
+        if: steps.secrets.outputs.skip != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$DATABASE_URL" || { echo "DATABASE_URL secret is required"; exit 1; }
+          test -n "$BACKUP_PASSPHRASE" || { echo "BACKUP_PASSPHRASE secret is required"; exit 1; }
+          PATH=/usr/lib/postgresql/17/bin:$PATH OUT_DIR=out ./scripts/backup.sh
+      - uses: actions/upload-artifact@v4
+        if: steps.secrets.outputs.skip != 'true'
+        with:
+          name: kitchen-quest-db-${{ github.run_id }}
+          path: out/*.gpg
+          retention-days: 90
+          if-no-files-found: error
