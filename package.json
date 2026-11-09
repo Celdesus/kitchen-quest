@@ -1,0 +1,24 @@
+{
+  "name": "kitchen-quest",
+  "version": "1.0.0",
+  "description": "Kitchen Quest prototype (EXAMPLE DATA)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "node server.mjs",
+    "reset": "node server.mjs --reset-only",
+    "seed": "node scripts/make-seed.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "embedded-postgres": "^17.11.0-beta.19",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "playwright-core": "^1.64.1"
+  }
+}

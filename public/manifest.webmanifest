@@ -1,0 +1,16 @@
+{
+  "name": "Kitchen Quest",
+  "short_name": "Kitchen Quest",
+  "description": "Kitchen duties, points and weekly crowns (prototype, example data).",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#14532d",
+  "lang": "en-AU",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

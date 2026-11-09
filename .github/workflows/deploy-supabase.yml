@@ -1,0 +1,83 @@
+# Deploys Kitchen Quest's database and PIN-login function to Ivan's Supabase project.
+# Run it from GitHub: Actions → "Deploy to Supabase" → Run workflow. Safe to re-run: migrations only apply once,
+# and the data step refuses to load into a project that already has outlets.
+name: Deploy to Supabase
+on:
+  workflow_dispatch:
+    inputs:
+      data:
+        description: "Data to load the FIRST time (ignored once the project has outlets)"
+        type: choice
+        options: [none, go-live, example-demo]
+        default: none
+      owner_email:
+        description: "Your sign-in email (the same one you add under Supabase → Authentication → Users)"
+        required: false
+      site_url:
+        description: "Website address (from Cloudflare Pages)"
+        default: "https://kitchen-quest.pages.dev"
+
+permissions:
+  contents: read
+
+concurrency: deploy-supabase
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the GitHub secrets are set
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          missing=""
+          for v in SUPABASE_ACCESS_TOKEN PROJECT_REF SUPABASE_DB_PASSWORD DATABASE_URL; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then echo "::error::Missing GitHub secrets:$missing (see DEPLOY.md step 4)"; exit 1; fi
+
+      # Pinned: CLI 3.0.0 is the version this repo was tested with (db push run against a local Postgres).
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+
+      - name: Database tables, rules (RLS) and functions
+        run: supabase db push --remote="$PROJECT_REF" --password="$SUPABASE_DB_PASSWORD" --yes
+
+      - name: PIN-login function
+        run: |
+          supabase secrets set --remote="$PROJECT_REF" --yes ALLOWED_ORIGIN="${{ inputs.site_url }}"
+          supabase functions deploy pin-login --remote="$PROJECT_REF" --no-verify-jwt --use-api --yes
+
+      - name: Load first-time data
+        if: inputs.data != 'none'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OWNER_EMAIL: ${{ inputs.owner_email }}
+          DATA: ${{ inputs.data }}
+        run: |
+          set -euo pipefail
+          if [ -z "$OWNER_EMAIL" ]; then echo "::error::Fill in owner_email when loading data"; exit 1; fi
+          n=$(psql "$DATABASE_URL" -Atc "select count(*) from public.outlets")
+          if [ "$n" != "0" ]; then echo "::warning::The project already has $n outlets, so no data was loaded."; exit 0; fi
+          if [ "$DATA" = "go-live" ]; then
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f supabase/setup-go-live.sql
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v email="$OWNER_EMAIL" -c "select public.bootstrap_owner('Ivan Haynes', :'email')"
+          else
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f supabase/seed.sql
+            # Example data on the internet: the owner login becomes Ivan's email, and the published
+            # example tablet codes are replaced with random ones so nobody can use the example PINs.
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v email="$OWNER_EMAIL" \
+              -c "update public.staff set email = lower(trim(:'email')) where role = 'owner'" \
+              -c "update public.outlet_tablets set code = upper(encode(extensions.gen_random_bytes(4), 'hex'))"
+          fi
+          echo "Loaded $DATA data. Owner sign-in email: $OWNER_EMAIL"
+
+      - name: Check the weekly winner job is scheduled
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: psql "$DATABASE_URL" -Atc "select jobname || '  ' || schedule from cron.job where jobname like 'kq-%'"
